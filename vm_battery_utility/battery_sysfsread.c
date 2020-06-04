@@ -37,9 +37,9 @@ struct initial_pkt initpkt;
 struct monitor_pkt monitorpkt;
 struct monitor_pkt monitortemp;
 
-int start_connection(struct sockaddr_vm sa_listen, int listen_fd, struct sockaddr_vm sa_client, socklen_t socklen_client);
+int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client);
 
-int client_fd;
+int client_fd = 0;
 char base_path[120] = "/sys/class/power_supply/";
 
 /*
@@ -176,7 +176,7 @@ bool read_monitor_pkt(struct monitor_pkt *monitortemp)
  */
 
 void fill_header (struct header *head, uint16_t id) {
-	strcpy(head->intelipc, INTELIPCID);
+	strcpy((char *)head->intelipc, INTELIPCID);
 	head->notify_id = id;
 	if (id == 1)
 		head->length = sizeof(initpkt) + sizeof(monitorpkt);
@@ -196,8 +196,15 @@ int send_pkt()
 	char *initialbuf = (char *)malloc(sizeof(head) + sizeof(initpkt) + sizeof(monitorpkt));
 	bool flag = 0;
 	int return_value = 0;
-
 #if debug_local_flag
+	char battery_module_name[50];
+
+	get_battery_module_name(battery_module_name);
+	printf("Battery module name: %s\n",battery_module_name);
+
+	/* Updating the base_path to point to the battery module */
+	strcat(base_path, battery_module_name);
+
 	printf("Starting the program\n");
 #endif
 
@@ -209,10 +216,11 @@ int send_pkt()
 	memcpy(initialbuf + sizeof(head) + sizeof(initpkt), (const unsigned char*)&monitorpkt, sizeof(monitorpkt));
 #if debug_local_flag
 	printf("Sending initial values\n");
-#endif
+#else
 	return_value = send(client_fd, initialbuf, sizeof(initialbuf), MSG_DONTWAIT);
 	if (return_value == -1)
 		goto out;
+#endif
 #if debug_local_flag
 	printf("Initial values sent\n");
 	for(int i = 0; i < (sizeof(head) + sizeof(initpkt) + sizeof(monitorpkt)); i++)
@@ -231,10 +239,11 @@ int send_pkt()
 			memcpy(msgbuf + sizeof(head), (const unsigned char *)&monitortemp, sizeof(monitortemp));
 #if debug_local_flag
 			printf("Sending the changed values\n");
-#endif
+#else
 			return_value = send(client_fd, msgbuf, sizeof(msgbuf), MSG_DONTWAIT);
 			if (return_value == -1)
 				goto out;
+#endif
 #if debug_local_flag
 			for(int j = 0; j < sizeof(msgbuf); j++)
 				printf("%c", msgbuf[j]);
@@ -250,8 +259,11 @@ out:
 	return -1;
 }
 
-int start_connection(struct sockaddr_vm sa_listen, int listen_fd, struct sockaddr_vm sa_client, socklen_t socklen_client) {
-	int ret;
+int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client) {
+	int ret = 0;
+	struct sockaddr_vm sa_client;
+	int m_acpidsock = 0;
+	struct sockaddr_un m_acpidsockaddr;
 	fprintf(stderr, "Battery utility listening on cid(%d), port(%d)\n", sa_listen.svm_cid, sa_listen.svm_port);
 	if (listen(listen_fd, 32) != 0) {
 		fprintf(stderr, "listen failed\n");
@@ -267,8 +279,6 @@ int start_connection(struct sockaddr_vm sa_listen, int listen_fd, struct sockadd
 	}
 	fprintf(stderr, "Battery utility connected from guest(%d)\n", sa_client.svm_cid);
 
-	int m_acpidsock;
-	struct sockaddr_un m_acpidsockaddr;
 	/* Connect to acpid socket */
 	m_acpidsock = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (m_acpidsock < 0) {
@@ -304,11 +314,11 @@ leave:
 }
 
 #if !debug_local_flag
-int main(int argc, char **argv)
+int main()
 {
-	int listen_fd;
-	int ret;
-	int return_value;
+	int listen_fd = 0;
+	int ret = 0;
+	int return_value = 0;
 	char battery_module_name[50];
 
 	get_battery_module_name(battery_module_name);
@@ -321,8 +331,7 @@ int main(int argc, char **argv)
 		.svm_cid = VMADDR_CID_ANY,
 		.svm_port = TEST_PORT,
 	};
-	struct sockaddr_vm sa_client;
-	socklen_t socklen_client = sizeof(sa_client);
+	socklen_t socklen_client = sizeof(struct sockaddr_vm);
 
 	listen_fd = socket(AF_VSOCK, SOCK_STREAM, 0);
 	if (listen_fd < 0) {
@@ -337,7 +346,7 @@ int main(int argc, char **argv)
 		goto out;
 	}
 start:
-	ret = start_connection(sa_listen, listen_fd, sa_client, socklen_client);
+	ret = start_connection(sa_listen, listen_fd, socklen_client);
 	if (ret == -1)
 		goto out;
 	return_value = send_pkt();
