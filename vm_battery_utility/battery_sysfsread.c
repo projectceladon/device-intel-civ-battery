@@ -37,7 +37,7 @@ struct initial_pkt initpkt;
 struct monitor_pkt monitorpkt;
 struct monitor_pkt monitortemp;
 
-int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client);
+int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client, int *m_acpidsock);
 
 int client_fd = 0;
 char base_path[120] = "/sys/class/power_supply/";
@@ -196,6 +196,11 @@ int send_pkt()
 	char *initialbuf = (char *)malloc(sizeof(head) + sizeof(initpkt) + sizeof(monitorpkt));
 	bool flag = 0;
 	int return_value = 0;
+
+	if (initialbuf == NULL) {
+		printf("Initialbuf malloc failed\n");
+		return -1;
+	}
 #if debug_local_flag
 	char battery_module_name[50];
 
@@ -218,8 +223,10 @@ int send_pkt()
 	printf("Sending initial values\n");
 #else
 	return_value = send(client_fd, initialbuf, sizeof(initialbuf), MSG_DONTWAIT);
-	if (return_value == -1)
+	if (return_value == -1) {
+		free(initialbuf);
 		goto out;
+	}
 #endif
 #if debug_local_flag
 	printf("Initial values sent\n");
@@ -259,10 +266,9 @@ out:
 	return -1;
 }
 
-int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client) {
+int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client, int *m_acpidsock) {
 	int ret = 0;
 	struct sockaddr_vm sa_client;
-	int m_acpidsock = 0;
 	struct sockaddr_un m_acpidsockaddr;
 	fprintf(stderr, "Battery utility listening on cid(%d), port(%d)\n", sa_listen.svm_cid, sa_listen.svm_port);
 	if (listen(listen_fd, 32) != 0) {
@@ -280,8 +286,8 @@ int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t sock
 	fprintf(stderr, "Battery utility connected from guest(%d)\n", sa_client.svm_cid);
 
 	/* Connect to acpid socket */
-	m_acpidsock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (m_acpidsock < 0) {
+	*m_acpidsock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (*m_acpidsock < 0) {
 		perror("new acpidsocket failed");
 		ret = -2;
 		goto out;
@@ -289,27 +295,14 @@ int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t sock
 
 	m_acpidsockaddr.sun_family = AF_UNIX;
 	strcpy(m_acpidsockaddr.sun_path,"/var/run/acpid.socket");
-	if(connect(m_acpidsock, (struct sockaddr *)&m_acpidsockaddr, 108)<0)
+	if(connect(*m_acpidsock, (struct sockaddr *)&m_acpidsockaddr, 108)<0)
 	{
 		/* can't connect */
 		perror("connect acpidsocket failed");
 		ret = -2;
 		goto out;
 	}
-	goto leave;
 out:
-	if(listen_fd >= 0)
-	{
-		printf("Closing listen_fd\n");
-		close(listen_fd);
-	}
-
-	if(m_acpidsock >= 0)
-	{
-		printf("Closing acpisocket\n");
-		close(m_acpidsock);
-	}
-leave:
 	return ret;
 }
 
@@ -319,6 +312,7 @@ int main()
 	int listen_fd = 0;
 	int ret = 0;
 	int return_value = 0;
+	int m_acpidsock = 0;
 	char battery_module_name[50];
 
 	get_battery_module_name(battery_module_name);
@@ -346,13 +340,24 @@ int main()
 		goto out;
 	}
 start:
-	ret = start_connection(sa_listen, listen_fd, socklen_client);
-	if (ret == -1)
+	ret = start_connection(sa_listen, listen_fd, socklen_client, &m_acpidsock);
+	if (ret < 0)
 		goto out;
 	return_value = send_pkt();
 	if (return_value == -1)
 		goto start;
 out:
+	if(listen_fd >= 0)
+	{
+		printf("Closing listen_fd\n");
+		close(listen_fd);
+	}
+
+	if(m_acpidsock >= 0)
+	{
+		printf("Closing acpisocket\n");
+		close(m_acpidsock);
+	}
 	return ret;
 }
 #endif
