@@ -39,7 +39,7 @@
 #define STATUS "status"
 
 struct header {
-	uint8_t intelipc[8];
+	uint8_t intelipc[9];
 	uint16_t notify_id;
 	uint16_t length;
 };
