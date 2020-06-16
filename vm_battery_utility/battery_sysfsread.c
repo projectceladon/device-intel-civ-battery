@@ -30,7 +30,7 @@
 
 #include "battery_notifypkt.h"
 
-#define TEST_PORT 1234
+#define TEST_PORT 14196
 #define debug_local_flag 0
 
 struct initial_pkt initpkt;
