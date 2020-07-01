@@ -40,7 +40,7 @@ struct monitor_pkt monitortemp;
 int start_connection(struct sockaddr_vm sa_listen, int listen_fd, socklen_t socklen_client, int *m_acpidsock);
 
 int client_fd = 0;
-char base_path[120] = "/sys/class/power_supply/";
+char base_path[100] = "/sys/class/power_supply/";
 
 /*
  * get_battery_module_name : This function gets the battery module
@@ -86,7 +86,6 @@ void read_sysfs_values(char *filename, void *buf, int len, int flag)
 		fprintf (stderr, "Failed to open file for read.\n");
 		return;
 	}
-
 
 	if (flag==0)
 		fread(buf, len, 1, fp);
@@ -193,14 +192,9 @@ int send_pkt()
 {
 	char msgbuf[1024] = {0};
 	struct header head;
-	char *initialbuf = (char *)malloc(sizeof(head) + sizeof(initpkt) + sizeof(monitorpkt));
 	bool flag = 0;
 	int return_value = 0;
 
-	if (initialbuf == NULL) {
-		printf("Initialbuf malloc failed\n");
-		return -1;
-	}
 #if debug_local_flag
 	char battery_module_name[50];
 
@@ -216,24 +210,22 @@ int send_pkt()
 	/* Read and store the battery sysfs values for the 1st time */
 	read_store_values();
 	fill_header(&head, 1);
-	memcpy(initialbuf, (const unsigned char*)&head, sizeof(head));
-	memcpy(initialbuf + sizeof(head), (const unsigned char*)&initpkt, sizeof(initpkt));
-	memcpy(initialbuf + sizeof(head) + sizeof(initpkt), (const unsigned char*)&monitorpkt, sizeof(monitorpkt));
+	memcpy(msgbuf, (const unsigned char*)&head, sizeof(head));
+	memcpy(msgbuf + sizeof(head), (const unsigned char*)&initpkt, sizeof(initpkt));
+	memcpy(msgbuf + sizeof(head) + sizeof(initpkt), (const unsigned char*)&monitorpkt, sizeof(monitorpkt));
 #if debug_local_flag
 	printf("Sending initial values\n");
 #else
-	return_value = send(client_fd, initialbuf, sizeof(initialbuf), MSG_DONTWAIT);
-	if (return_value == -1) {
-		free(initialbuf);
+	return_value = send(client_fd, msgbuf, sizeof(msgbuf), MSG_DONTWAIT);
+	if (return_value == -1)
 		goto out;
-	}
+	memset(msgbuf, 0, sizeof(msgbuf));
 #endif
 #if debug_local_flag
 	printf("Initial values sent\n");
 	for(int i = 0; i < (sizeof(head) + sizeof(initpkt) + sizeof(monitorpkt)); i++)
-		printf("%c", initialbuf[i]);
+		printf("%c", msgbuf[i]);
 #endif
-	free(initialbuf);
 	while(1)
 	{
 		sleep(1);
