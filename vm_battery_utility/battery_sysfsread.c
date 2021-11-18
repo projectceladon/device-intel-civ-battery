@@ -74,7 +74,7 @@ void get_battery_module_name(char *buf)
  * module.
  */
 
-void read_sysfs_values(char *filename, void *buf, int len, int flag)
+int read_sysfs_values(char *filename, void *buf, int len, int flag)
 {
 	char sysfs_path[120];
 
@@ -84,7 +84,7 @@ void read_sysfs_values(char *filename, void *buf, int len, int flag)
 	FILE *fp = fopen(sysfs_path, "r");
 	if (!fp) {  /* validate file open for reading */
 		fprintf (stderr, "Failed to open file for read.\n");
-		return;
+		return -ENODEV;
 	}
 
 	if (flag==0)
@@ -92,7 +92,7 @@ void read_sysfs_values(char *filename, void *buf, int len, int flag)
 	else
     		fscanf (fp, "%d", (int*)buf);  /* read/validate value */
 	fclose (fp);
-	return;
+	return 0;
 }
 
 /* read_store_values: Read and store all the battery related sysfs values
@@ -101,6 +101,7 @@ void read_sysfs_values(char *filename, void *buf, int len, int flag)
 
 void read_store_values()
 {
+	int ret;
 	read_sysfs_values(MODEL_NAME, initpkt.model_name, sizeof(initpkt.model_name), 0);
 	read_sysfs_values(SERIAL_NUMBER, initpkt.serial_number, sizeof(initpkt.serial_number), 0);
 	read_sysfs_values(MANUFACTURER, initpkt.manufacturer, sizeof(initpkt.manufacturer), 0);
@@ -108,12 +109,14 @@ void read_store_values()
 	read_sysfs_values(TYPE, initpkt.type, sizeof(initpkt.type), 0);
 	read_sysfs_values(PRESENT, initpkt.present, sizeof(initpkt.present), 0);
 	read_sysfs_values(CAPACITY, &monitorpkt.capacity, sizeof(monitorpkt.capacity), 1);
-	read_sysfs_values(CHARGE_FULL_DESIGN, &monitorpkt.charge_full_design, sizeof(monitorpkt.charge_full_design), 1);
+	ret = read_sysfs_values(CHARGE_FULL_DESIGN, &monitorpkt.charge_full_design, sizeof(monitorpkt.charge_full_design), 1);
+	if (ret !=  0) monitorpkt.charge_full_design = 0;
 	read_sysfs_values(HEALTH, monitorpkt.health, sizeof(monitorpkt.health), 0);
 	read_sysfs_values(TEMP, &monitorpkt.temp, sizeof(monitorpkt.temp), 1);
 	read_sysfs_values(CHARGE_NOW, &monitorpkt.charge_now, sizeof(monitorpkt.charge_now), 1);
 	read_sysfs_values(TIME_TO_EMPTY_AVG, &monitorpkt.time_to_empty_avg, sizeof(monitorpkt.time_to_empty_avg), 1);
-	read_sysfs_values(CHARGE_FULL, &monitorpkt.charge_full, sizeof(monitorpkt.charge_full), 1);
+	ret = read_sysfs_values(CHARGE_FULL, &monitorpkt.charge_full, sizeof(monitorpkt.charge_full), 1);
+	if (ret !=  0) monitorpkt.charge_full = 0;
 	read_sysfs_values(TIME_TO_FULL_NOW, &monitorpkt.time_to_full_now, sizeof(monitorpkt.time_to_full_now), 1);
 	read_sysfs_values(VOLTAGE_NOW, &monitorpkt.voltage_now, sizeof(monitorpkt.voltage_now), 1);
 	read_sysfs_values(CHARGE_TYPE, monitorpkt.charge_type, sizeof(monitorpkt.charge_type), 0);
