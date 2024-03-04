@@ -87,10 +87,18 @@ int read_sysfs_values(char *filename, void *buf, int len, int flag)
 		return -ENODEV;
 	}
 
-	if (flag==0)
-		fread(buf, len, 1, fp);
-	else
-    		fscanf (fp, "%d", (int*)buf);  /* read/validate value */
+	if (flag==0) {
+	    if (fread(buf, len, 1, fp) == EOF) {
+		    fclose (fp);
+		    return -1;
+	    }
+	}
+	else {
+	    if (fscanf (fp, "%d", (int*)buf) < 0) {
+		    fclose (fp);
+		    return -1 ;
+	    }
+	}
 	fclose (fp);
 	return 0;
 }
